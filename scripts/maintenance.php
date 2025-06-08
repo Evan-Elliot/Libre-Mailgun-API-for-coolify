@@ -5,8 +5,8 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use MailgunClone\Storage;
 
 /**
- * Script di manutenzione per il clone Mailgun
- * Gestisce pulizia, statistiche e manutenzione generale
+ * Maintenance script for LibreMailApi
+ * Handles cleanup, statistics and general maintenance
  */
 
 class MaintenanceScript
@@ -44,52 +44,52 @@ class MaintenanceScript
                 $this->showHelp();
                 break;
             default:
-                echo "Comando non riconosciuto: $command\n";
+                echo "Unrecognized command: $command\n";
                 $this->showHelp();
         }
     }
 
     private function showHelp()
     {
-        echo "=== MAILGUN CLONE - SCRIPT DI MANUTENZIONE ===\n\n";
-        echo "Utilizzo: php scripts/maintenance.php [comando]\n\n";
-        echo "Comandi disponibili:\n";
-        echo "  cleanup  - Elimina messaggi vecchi (oltre {$this->config['storage']['retention_days']} giorni)\n";
-        echo "  stats    - Mostra statistiche storage\n";
-        echo "  list     - Lista tutti i messaggi salvati\n";
-        echo "  clear    - Elimina TUTTI i messaggi (attenzione!)\n";
-        echo "  help     - Mostra questo aiuto\n\n";
-        echo "Esempi:\n";
+        echo "=== LIBREMAILAPI - MAINTENANCE SCRIPT ===\n\n";
+        echo "Usage: php scripts/maintenance.php [command]\n\n";
+        echo "Available commands:\n";
+        echo "  cleanup  - Delete old messages (older than {$this->config['storage']['retention_days']} days)\n";
+        echo "  stats    - Show storage statistics\n";
+        echo "  list     - List all saved messages\n";
+        echo "  clear    - Delete ALL messages (warning!)\n";
+        echo "  help     - Show this help\n\n";
+        echo "Examples:\n";
         echo "  php scripts/maintenance.php stats\n";
         echo "  php scripts/maintenance.php cleanup\n";
     }
 
     private function cleanup()
     {
-        echo "Avvio pulizia messaggi vecchi...\n";
-        
+        echo "Starting cleanup of old messages...\n";
+
         $deletedCount = $this->storage->cleanupOldMessages();
-        
-        echo "Pulizia completata!\n";
-        echo "Messaggi eliminati: $deletedCount\n";
-        
+
+        echo "Cleanup completed!\n";
+        echo "Messages deleted: $deletedCount\n";
+
         if ($deletedCount > 0) {
-            echo "Spazio liberato: " . $this->formatBytes($this->calculateFreedSpace()) . "\n";
+            echo "Space freed: " . $this->formatBytes($this->calculateFreedSpace()) . "\n";
         }
     }
 
     private function showStats()
     {
-        echo "=== STATISTICHE STORAGE ===\n\n";
-        
+        echo "=== STORAGE STATISTICS ===\n\n";
+
         $stats = $this->storage->getStorageStats();
-        
-        echo "Messaggi totali: " . $stats['total_messages'] . "\n";
-        echo "Allegati totali: " . $stats['total_attachments'] . "\n";
-        echo "Dimensione totale: " . $this->formatBytes($stats['total_size_bytes']) . "\n";
-        echo "Percorso storage: " . $stats['storage_path'] . "\n\n";
-        
-        // Statistiche aggiuntive
+
+        echo "Total messages: " . $stats['total_messages'] . "\n";
+        echo "Total attachments: " . $stats['total_attachments'] . "\n";
+        echo "Total size: " . $this->formatBytes($stats['total_size_bytes']) . "\n";
+        echo "Storage path: " . $stats['storage_path'] . "\n\n";
+
+        // Additional statistics
         $this->showDetailedStats();
     }
 
@@ -98,11 +98,11 @@ class MaintenanceScript
         $messages = $this->storage->listMessages();
         
         if (empty($messages)) {
-            echo "Nessun messaggio trovato.\n";
+            echo "No messages found.\n";
             return;
         }
 
-        // Raggruppa per dominio
+        // Group by domain
         $domainStats = [];
         $oldestMessage = null;
         $newestMessage = null;
@@ -122,35 +122,35 @@ class MaintenanceScript
             }
         }
 
-        echo "=== DETTAGLI ===\n";
-        echo "Messaggi per dominio:\n";
+        echo "=== DETAILS ===\n";
+        echo "Messages by domain:\n";
         foreach ($domainStats as $domain => $count) {
-            echo "  $domain: $count messaggi\n";
+            echo "  $domain: $count messages\n";
         }
 
         if ($oldestMessage) {
-            echo "\nMessaggio più vecchio: " . date('Y-m-d H:i:s', $oldestMessage['timestamp']) . "\n";
-            echo "Messaggio più recente: " . date('Y-m-d H:i:s', $newestMessage['timestamp']) . "\n";
+            echo "\nOldest message: " . date('Y-m-d H:i:s', $oldestMessage['timestamp']) . "\n";
+            echo "Newest message: " . date('Y-m-d H:i:s', $newestMessage['timestamp']) . "\n";
         }
     }
 
     private function listMessages($limit = 20)
     {
-        echo "=== LISTA MESSAGGI (ultimi $limit) ===\n\n";
-        
+        echo "=== MESSAGE LIST (last $limit) ===\n\n";
+
         $messages = $this->storage->listMessages(null, $limit);
-        
+
         if (empty($messages)) {
-            echo "Nessun messaggio trovato.\n";
+            echo "No messages found.\n";
             return;
         }
 
-        // Ordina per timestamp decrescente
+        // Sort by descending timestamp
         usort($messages, function($a, $b) {
             return $b['timestamp'] - $a['timestamp'];
         });
 
-        printf("%-20s %-25s %-30s %-50s\n", "DATA", "DOMINIO", "DA", "OGGETTO");
+        printf("%-20s %-25s %-30s %-50s\n", "DATE", "DOMAIN", "FROM", "SUBJECT");
         echo str_repeat("-", 125) . "\n";
 
         foreach ($messages as $message) {
@@ -162,20 +162,20 @@ class MaintenanceScript
             printf("%-20s %-25s %-30s %-50s\n", $date, $domain, $from, $subject);
         }
 
-        echo "\nTotale messaggi: " . count($messages) . "\n";
+        echo "\nTotal messages: " . count($messages) . "\n";
     }
 
     private function clearAll()
     {
-        echo "ATTENZIONE: Questa operazione eliminerà TUTTI i messaggi salvati!\n";
-        echo "Sei sicuro di voler continuare? (digita 'yes' per confermare): ";
-        
+        echo "WARNING: This operation will delete ALL saved messages!\n";
+        echo "Are you sure you want to continue? (type 'yes' to confirm): ";
+
         $handle = fopen("php://stdin", "r");
         $confirmation = trim(fgets($handle));
         fclose($handle);
-        
+
         if ($confirmation !== 'yes') {
-            echo "Operazione annullata.\n";
+            echo "Operation cancelled.\n";
             return;
         }
 
@@ -185,7 +185,7 @@ class MaintenanceScript
         $deletedMessages = 0;
         $deletedAttachments = 0;
 
-        // Elimina messaggi
+        // Delete messages
         $messageFiles = glob($messagesDir . '/*.json');
         foreach ($messageFiles as $file) {
             if (unlink($file)) {
@@ -193,7 +193,7 @@ class MaintenanceScript
             }
         }
 
-        // Elimina allegati
+        // Delete attachments
         $attachmentFiles = glob($attachmentsDir . '/*');
         foreach ($attachmentFiles as $file) {
             if (is_file($file) && unlink($file)) {
@@ -201,9 +201,9 @@ class MaintenanceScript
             }
         }
 
-        echo "Pulizia completata!\n";
-        echo "Messaggi eliminati: $deletedMessages\n";
-        echo "Allegati eliminati: $deletedAttachments\n";
+        echo "Cleanup completed!\n";
+        echo "Messages deleted: $deletedMessages\n";
+        echo "Attachments deleted: $deletedAttachments\n";
     }
 
     private function formatBytes($bytes, $precision = 2)
@@ -219,13 +219,13 @@ class MaintenanceScript
 
     private function calculateFreedSpace()
     {
-        // Stima approssimativa - in un'implementazione reale 
-        // dovresti tracciare la dimensione prima della pulizia
-        return 1024 * 1024; // 1MB come esempio
+        // Rough estimate - in a real implementation
+        // you should track the size before cleanup
+        return 1024 * 1024; // 1MB as example
     }
 }
 
-// Esegui lo script se chiamato direttamente
+// Execute the script if called directly
 if (basename(__FILE__) === basename($_SERVER['SCRIPT_NAME'])) {
     $maintenance = new MaintenanceScript();
     $command = $argv[1] ?? null;
