@@ -35,14 +35,6 @@ test_simple.php
 tests/
 examples/
 
-# Composer dev dependencies
-vendor/phpunit/
-vendor/sebastian/
-vendor/myclabs/
-vendor/doctrine/instantiator
-vendor/phar-io/
-vendor/theseer/
-vendor/nikic/php-parser
 
 # Node modules (if any)
 node_modules/
