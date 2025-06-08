@@ -1,0 +1,459 @@
+<?php
+
+namespace LibreMailApi;
+
+use Ramsey\Uuid\Uuid;
+
+class MessageHandler
+{
+    private $config;
+    private $storage;
+    private $logger;
+    private $validator;
+    private $smtpHandler;
+
+    public function __construct($config, $storage, $logger)
+    {
+        $this->config = $config;
+        $this->storage = $storage;
+        $this->logger = $logger;
+        $this->validator = new Validator($config);
+
+        // Initialize SMTP handler if enabled
+        if (!empty($config['smtp']['enabled'])) {
+            $this->smtpHandler = new SmtpHandler($config, $logger);
+        }
+    }
+
+    public function sendMessage($domain, $postData, $files = [])
+    {
+        try {
+            // Validate required fields
+            $validation = $this->validator->validateMessage($postData);
+            if (!$validation['valid']) {
+                return ['status' => 400, 'data' => ['message' => $validation['error']]];
+            }
+
+            // Generate message ID
+            $messageId = $this->generateMessageId($domain);
+            
+            // Process message
+            $message = $this->processMessage($domain, $postData, $files, $messageId);
+            
+            // Store message (always store for simulation/logging purposes)
+            $storageKey = $this->storage->storeMessage($message);
+
+            // Attempt to send via SMTP if enabled
+            $smtpResult = null;
+            if ($this->smtpHandler && $this->smtpHandler->isEnabled()) {
+                $smtpResult = $this->smtpHandler->sendMessage($message);
+
+                if (!$smtpResult['success']) {
+                    // Log SMTP failure but don't fail the API call (maintain Mailgun compatibility)
+                    $this->logger->warning("SMTP sending failed, message stored for simulation", [
+                        'message_id' => $messageId,
+                        'smtp_error' => $smtpResult['error'] ?? 'Unknown error'
+                    ]);
+                }
+            }
+
+            // Log the operation
+            $logData = [
+                'domain' => $domain,
+                'message_id' => $messageId,
+                'to' => $postData['to'] ?? 'unknown',
+                'subject' => $postData['subject'] ?? 'no subject',
+                'storage_key' => $storageKey
+            ];
+
+            if ($smtpResult) {
+                $logData['smtp_enabled'] = true;
+                $logData['smtp_success'] = $smtpResult['success'];
+                if (!$smtpResult['success']) {
+                    $logData['smtp_error'] = $smtpResult['error'];
+                }
+            } else {
+                $logData['smtp_enabled'] = false;
+            }
+
+            $this->logger->info("Message processed", $logData);
+
+            // Return success response (always successful for API compatibility)
+            $responseData = [
+                'id' => $messageId,
+                'message' => 'Queued. Thank you.'
+            ];
+
+            // Add SMTP status to response if enabled (for debugging)
+            if ($this->smtpHandler && $this->smtpHandler->isEnabled()) {
+                $responseData['smtp_status'] = $smtpResult['success'] ? 'sent' : 'failed';
+                if (!$smtpResult['success']) {
+                    $responseData['smtp_error'] = $smtpResult['error'] ?? 'Unknown error';
+                }
+            }
+
+            return [
+                'status' => 200,
+                'data' => $responseData
+            ];
+
+        } catch (\Exception $e) {
+            $this->logger->error("Error sending message: " . $e->getMessage());
+            return ['status' => 500, 'data' => ['message' => 'Internal server error']];
+        }
+    }
+
+    public function sendMimeMessage($domain, $postData, $files = [])
+    {
+        try {
+            // Validate MIME message
+            if (!isset($postData['to']) || !isset($files['message'])) {
+                return ['status' => 400, 'data' => ['message' => 'Missing required fields: to, message']];
+            }
+
+            // Generate message ID
+            $messageId = $this->generateMessageId($domain);
+            
+            // Process MIME message
+            $message = $this->processMimeMessage($domain, $postData, $files, $messageId);
+            
+            // Store message (always store for simulation/logging purposes)
+            $storageKey = $this->storage->storeMessage($message);
+
+            // Attempt to send via SMTP if enabled
+            $smtpResult = null;
+            if ($this->smtpHandler && $this->smtpHandler->isEnabled()) {
+                $smtpResult = $this->smtpHandler->sendMimeMessage($message);
+
+                if (!$smtpResult['success']) {
+                    // Log SMTP failure but don't fail the API call (maintain Mailgun compatibility)
+                    $this->logger->warning("SMTP MIME sending failed, message stored for simulation", [
+                        'message_id' => $messageId,
+                        'smtp_error' => $smtpResult['error'] ?? 'Unknown error'
+                    ]);
+                }
+            }
+
+            // Log the operation
+            $logData = [
+                'domain' => $domain,
+                'message_id' => $messageId,
+                'to' => $postData['to'],
+                'storage_key' => $storageKey
+            ];
+
+            if ($smtpResult) {
+                $logData['smtp_enabled'] = true;
+                $logData['smtp_success'] = $smtpResult['success'];
+                if (!$smtpResult['success']) {
+                    $logData['smtp_error'] = $smtpResult['error'];
+                }
+            } else {
+                $logData['smtp_enabled'] = false;
+            }
+
+            $this->logger->info("MIME message processed", $logData);
+
+            // Return success response (always successful for API compatibility)
+            $responseData = [
+                'id' => $messageId,
+                'message' => 'Queued. Thank you.'
+            ];
+
+            // Add SMTP status to response if enabled (for debugging)
+            if ($this->smtpHandler && $this->smtpHandler->isEnabled()) {
+                $responseData['smtp_status'] = $smtpResult['success'] ? 'sent' : 'failed';
+                if (!$smtpResult['success']) {
+                    $responseData['smtp_error'] = $smtpResult['error'] ?? 'Unknown error';
+                }
+            }
+
+            return [
+                'status' => 200,
+                'data' => $responseData
+            ];
+
+        } catch (\Exception $e) {
+            $this->logger->error("Error sending MIME message: " . $e->getMessage());
+            return ['status' => 500, 'data' => ['message' => 'Internal server error']];
+        }
+    }
+
+    public function retrieveMessage($domain, $storageKey)
+    {
+        try {
+            $message = $this->storage->retrieveMessage($storageKey);
+            
+            if (!$message) {
+                return ['status' => 404, 'data' => ['message' => 'Message not found']];
+            }
+
+            // Format response to match Mailgun API
+            $response = [
+                'Content-Transfer-Encoding' => '7bit',
+                'Content-Type' => $message['content_type'] ?? 'text/plain',
+                'From' => $message['from'],
+                'Message-Id' => $message['message_id'],
+                'Mime-Version' => '1.0',
+                'Subject' => $message['subject'],
+                'To' => $message['to'],
+                'X-Mailgun-Tag' => $message['tags'] ?? '',
+                'sender' => $message['sender'],
+                'recipients' => $message['recipients'],
+                'body-html' => $message['html'] ?? '',
+                'body-plain' => $message['text'] ?? '',
+                'stripped-html' => $message['html'] ?? '',
+                'stripped-text' => $message['text'] ?? '',
+                'stripped-signature' => '',
+                'message-headers' => $message['headers'] ?? [],
+                'X-Mailgun-Template-Name' => $message['template'] ?? '',
+                'X-Mailgun-Template-Variables' => $message['template_variables'] ?? '{}'
+            ];
+
+            return ['status' => 200, 'data' => $response];
+
+        } catch (\Exception $e) {
+            $this->logger->error("Error retrieving message: " . $e->getMessage());
+            return ['status' => 500, 'data' => ['message' => 'Internal server error']];
+        }
+    }
+
+    public function getQueueStatus($domain)
+    {
+        // Simulate queue status
+        $response = [
+            'regular' => [
+                'is_disabled' => false,
+                'disabled' => null
+            ],
+            'scheduled' => [
+                'is_disabled' => false,
+                'disabled' => null
+            ]
+        ];
+
+        return ['status' => 200, 'data' => $response];
+    }
+
+    public function deleteEnvelopes($domain)
+    {
+        try {
+            // Simulate deletion of scheduled messages
+            $this->logger->info("Deleted envelopes for domain: $domain");
+            
+            return [
+                'status' => 200,
+                'data' => ['message' => 'done']
+            ];
+
+        } catch (\Exception $e) {
+            $this->logger->error("Error deleting envelopes: " . $e->getMessage());
+            return ['status' => 500, 'data' => ['message' => 'Internal server error']];
+        }
+    }
+
+    private function generateMessageId($domain)
+    {
+        $uuid = Uuid::uuid4()->toString();
+        return "<{$uuid}@{$domain}>";
+    }
+
+    private function processMessage($domain, $postData, $files, $messageId)
+    {
+        $message = [
+            'message_id' => $messageId,
+            'domain' => $domain,
+            'from' => $postData['from'],
+            'to' => $postData['to'],
+            'cc' => $postData['cc'] ?? '',
+            'bcc' => $postData['bcc'] ?? '',
+            'subject' => $postData['subject'],
+            'text' => $postData['text'] ?? '',
+            'html' => $postData['html'] ?? '',
+            'sender' => $this->extractEmail($postData['from']),
+            'recipients' => $this->extractEmails($postData['to']),
+            'timestamp' => time(),
+            'content_type' => 'multipart/form-data',
+            'headers' => $this->buildHeaders($postData),
+            'tags' => $postData['o:tag'] ?? '',
+            'template' => $postData['template'] ?? '',
+            'template_variables' => $postData['t:variables'] ?? '{}',
+            'attachments' => $this->processAttachments($files)
+        ];
+
+        return $message;
+    }
+
+    private function processMimeMessage($domain, $postData, $files, $messageId)
+    {
+        $mimeContent = file_get_contents($files['message']['tmp_name']);
+        
+        $message = [
+            'message_id' => $messageId,
+            'domain' => $domain,
+            'to' => $postData['to'],
+            'mime_content' => $mimeContent,
+            'timestamp' => time(),
+            'content_type' => 'message/rfc822',
+            'headers' => [],
+            'tags' => $postData['o:tag'] ?? '',
+            'template' => $postData['template'] ?? '',
+            'template_variables' => $postData['t:variables'] ?? '{}'
+        ];
+
+        return $message;
+    }
+
+    private function extractEmail($emailString)
+    {
+        if (preg_match('/<([^>]+)>/', $emailString, $matches)) {
+            return $matches[1];
+        }
+        return trim($emailString);
+    }
+
+    private function extractEmails($emailString)
+    {
+        $emails = [];
+        $parts = explode(',', $emailString);
+        
+        foreach ($parts as $part) {
+            $emails[] = $this->extractEmail(trim($part));
+        }
+        
+        return implode(', ', $emails);
+    }
+
+    private function buildHeaders($postData)
+    {
+        $headers = [
+            ['Mime-Version', '1.0'],
+            ['Subject', $postData['subject']],
+            ['From', $postData['from']],
+            ['To', $postData['to']],
+            ['Content-Transfer-Encoding', '7bit']
+        ];
+
+        // Add custom headers
+        foreach ($postData as $key => $value) {
+            if (strpos($key, 'h:') === 0) {
+                $headerName = substr($key, 2);
+                $headers[] = [$headerName, $value];
+            }
+        }
+
+        return $headers;
+    }
+
+    private function processAttachments($files)
+    {
+        $attachments = [];
+
+        if (isset($files['attachment'])) {
+            // Handle single file or multiple files
+            if (is_array($files['attachment']['name'])) {
+                // Multiple files
+                $fileCount = count($files['attachment']['name']);
+                for ($i = 0; $i < $fileCount; $i++) {
+                    if (!empty($files['attachment']['name'][$i]) &&
+                        !empty($files['attachment']['tmp_name'][$i]) &&
+                        is_uploaded_file($files['attachment']['tmp_name'][$i])) {
+
+                        // Store the attachment
+                        $storedAttachment = $this->storage->storeAttachment([
+                            'name' => $files['attachment']['name'][$i],
+                            'tmp_name' => $files['attachment']['tmp_name'][$i],
+                            'size' => $files['attachment']['size'][$i],
+                            'type' => $files['attachment']['type'][$i]
+                        ], '');
+
+                        if ($storedAttachment) {
+                            $attachments[] = [
+                                'filename' => $files['attachment']['name'][$i],
+                                'name' => $files['attachment']['name'][$i],
+                                'size' => $files['attachment']['size'][$i],
+                                'type' => $files['attachment']['type'][$i],
+                                'path' => $storedAttachment['path']
+                            ];
+                        }
+                    }
+                }
+            } else {
+                // Single file
+                if (!empty($files['attachment']['name']) &&
+                    !empty($files['attachment']['tmp_name']) &&
+                    is_uploaded_file($files['attachment']['tmp_name'])) {
+
+                    // Store the attachment
+                    $storedAttachment = $this->storage->storeAttachment($files['attachment'], '');
+
+                    if ($storedAttachment) {
+                        $attachments[] = [
+                            'filename' => $files['attachment']['name'],
+                            'name' => $files['attachment']['name'],
+                            'size' => $files['attachment']['size'],
+                            'type' => $files['attachment']['type'],
+                            'path' => $storedAttachment['path']
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $attachments;
+    }
+
+    /**
+     * Test SMTP connection
+     */
+    public function testSmtpConnection()
+    {
+        if (!$this->smtpHandler || !$this->smtpHandler->isEnabled()) {
+            return [
+                'status' => 400,
+                'data' => [
+                    'message' => 'SMTP is not enabled',
+                    'smtp_enabled' => false
+                ]
+            ];
+        }
+
+        $result = $this->smtpHandler->testConnection();
+
+        return [
+            'status' => $result['success'] ? 200 : 500,
+            'data' => [
+                'message' => $result['success'] ? 'SMTP connection successful' : 'SMTP connection failed',
+                'smtp_enabled' => true,
+                'smtp_host' => $this->config['smtp']['host'],
+                'smtp_port' => $this->config['smtp']['port'],
+                'smtp_encryption' => $this->config['smtp']['encryption'],
+                'success' => $result['success'],
+                'error' => $result['error'] ?? null
+            ]
+        ];
+    }
+
+    /**
+     * Get SMTP configuration status
+     */
+    public function getSmtpStatus()
+    {
+        $smtpEnabled = !empty($this->config['smtp']['enabled']);
+        $smtpConfigured = $smtpEnabled &&
+                         !empty($this->config['smtp']['host']) &&
+                         !empty($this->config['smtp']['username']);
+
+        return [
+            'status' => 200,
+            'data' => [
+                'smtp_enabled' => $smtpEnabled,
+                'smtp_configured' => $smtpConfigured,
+                'smtp_host' => $this->config['smtp']['host'] ?? null,
+                'smtp_port' => $this->config['smtp']['port'] ?? null,
+                'smtp_encryption' => $this->config['smtp']['encryption'] ?? null,
+                'smtp_username' => $smtpEnabled ? $this->config['smtp']['username'] : null
+            ]
+        ];
+    }
+}

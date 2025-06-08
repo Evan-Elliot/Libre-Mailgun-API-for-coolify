@@ -1,0 +1,64 @@
+# Composer vendor
+vendor/
+
+# Composer
+composer.phar
+composer.lock
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/*.log
+!logs/.gitkeep
+
+# Storage
+storage/messages/*.json
+storage/attachments/*
+!storage/messages/.gitkeep
+!storage/attachments/.gitkeep
+!storage/logs/.gitkeep
+
+# Tests
+test_simple.php
+phpunit.xml
+.phpunit.result.cache
+
+# Temporary
+*.tmp
+*.temp
+*.cache
+
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+.docker/
+
+# Backup
+*.bak
+*.backup
+
+# Custom
+config/config.php

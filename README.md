@@ -1,0 +1,377 @@
+# LibreMailApi - Free email API with SMTP support
+
+A free and open-source email API written in PHP that not only simulates email sending but can also send real emails through configurable SMTP servers. Uses Guzzle HTTP client, PHPMailer and other modern libraries to provide a Mailgun-compatible API.
+
+This idea was born when I had to send newsletters through [Ghost](https://ghost.org) and it required paying for the Mailgun service even though I had a dedicated SMTP server for newsletters.
+
+## Features
+
+- **Compatible API endpoints**: Implements main Mailgun endpoints for email sending
+- **Real email sending**: Supports actual email delivery through configurable SMTP servers
+- **Dual mode**: Works in both simulation and real sending modes
+- **HTTP basic authentication**: Simulates Mailgun API authentication
+- **Simulated storage**: Saves messages in JSON files for later retrieval
+- **Complete validation**: Validates email addresses, attachments and parameters
+- **Advanced logging**: Records both simulated and real SMTP operations
+- **Attachment handling**: Supports upload, storage and sending of attachments
+- **MIME format**: Supports sending messages in MIME format
+- **Flexible SMTP configuration**: Supports various SMTP providers (Gmail, Outlook, custom servers)
+
+## Implemented endpoints
+
+### Message sending
+- `POST /v3/{domain}/messages` - Send email with form parameters
+- `POST /v3/{domain}/messages.mime` - Send email in MIME format
+
+### Message management
+- `GET /v3/domains/{domain}/messages/{storage_key}` - Retrieve saved email
+- `GET /v3/domains/{domain}/sending_queues` - Sending queue status
+- `DELETE /v3/{domain}/envelopes` - Delete scheduled messages
+
+### SMTP management (new endpoints)
+- `GET /v3/{domain}/smtp` - SMTP configuration status
+- `GET /v3/{domain}/smtp/test` - SMTP connection test
+
+## Installation
+
+1. **Clone the repository**:
+```bash
+git clone <repository-url>
+cd libre-mail-api
+```
+
+2. **Install dependencies**:
+```bash
+composer install
+```
+
+3. **Start the server**:
+```bash
+composer start
+# or
+php -S localhost:8080 index.php
+```
+
+## Configuration
+
+### Basic configuration
+Configuration is located in `config/config.php`. To get started, copy the example file:
+
+```bash
+cp config/config.example.php config/config.php
+```
+
+### SMTP configuration
+To enable real email sending, modify the `smtp` section in `config/config.php`:
+
+```php
+'smtp' => [
+    'enabled' => true, // Enable SMTP sending
+    'host' => 'smtp.gmail.com', // SMTP server
+    'port' => 587, // SMTP port
+    'encryption' => 'tls', // Encryption (tls/ssl/null)
+    'auth' => true, // SMTP authentication
+    'username' => 'your-email@gmail.com', // SMTP username
+    'password' => 'your-app-password', // SMTP password
+    'from_name' => 'Your Name', // Default sender name
+    'from_email' => 'your-email@gmail.com', // Default sender email
+]
+```
+
+#### SMTP configuration examples
+
+**Gmail (with app password):**
+```php
+'smtp' => [
+    'enabled' => true,
+    'host' => 'smtp.gmail.com',
+    'port' => 587,
+    'encryption' => 'tls',
+    'username' => 'your-email@gmail.com',
+    'password' => 'your-16-char-app-password', // Not your regular password!
+]
+```
+
+**Outlook/Hotmail:**
+```php
+'smtp' => [
+    'enabled' => true,
+    'host' => 'smtp-mail.outlook.com',
+    'port' => 587,
+    'encryption' => 'tls',
+    'username' => 'your-email@outlook.com',
+    'password' => 'your-password',
+]
+```
+
+**Custom SMTP server:**
+```php
+'smtp' => [
+    'enabled' => true,
+    'host' => 'mail.yourdomain.com',
+    'port' => 587,
+    'encryption' => 'tls',
+    'username' => 'noreply@yourdomain.com',
+    'password' => 'your-password',
+]
+```
+
+### Complete configuration
+
+```php
+return [
+    'api' => [
+        'base_url' => 'http://localhost:8080',
+        'version' => 'v3',
+        'auth' => [
+            'username' => 'api',
+            'password' => 'key-test123456789'
+        ]
+    ],
+    'storage' => [
+        'path' => __DIR__ . '/../storage',
+        'retention_days' => 30
+    ],
+    'limits' => [
+        'max_recipients' => 1000,
+        'max_attachment_size' => 25 * 1024 * 1024 // 25MB
+    ]
+];
+```
+
+## Usage
+
+### Example with cURL
+
+```bash
+# Send a simple email
+curl -s --user 'api:key-test123456789' \
+    http://localhost:8080/v3/sandbox.libremailapi.org/messages \
+    -F from='Excited User <hello@sandbox.libremailapi.org>' \
+    -F to='test@example.com' \
+    -F subject='Hello' \
+    -F text='Testing some LibreMailApi awesomeness!'
+```
+
+### Example with PHP and Guzzle
+
+```php
+use GuzzleHttp\Client;
+
+$client = new Client();
+
+$response = $client->post('http://localhost:8080/v3/sandbox.libremailapi.org/messages', [
+    'auth' => ['api', 'key-test123456789'],
+    'form_params' => [
+        'from' => 'Excited User <hello@sandbox.libremailapi.org>',
+        'to' => 'test@example.com',
+        'subject' => 'Hello',
+        'text' => 'Testing some LibreMailApi awesomeness!'
+    ]
+]);
+
+$result = json_decode($response->getBody(), true);
+echo "Message ID: " . $result['id'] . "\n";
+```
+
+### Supported parameters
+
+#### Basic parameters
+- `from` (required): Sender email address
+- `to` (required): Recipient email addresses
+- `subject` (required): Message subject
+- `text`: Message body in text format
+- `html`: Message body in HTML format
+- `cc`: Carbon copy recipients
+- `bcc`: Blind carbon copy recipients
+
+#### Advanced parameters
+- `o:tag`: Tags to categorize messages
+- `o:deliverytime`: Schedule delivery (RFC-2822)
+- `o:testmode`: Test mode (yes/no)
+- `o:tracking`: Enable tracking (yes/no)
+- `o:tracking-clicks`: Click tracking (yes/no/htmlonly)
+- `o:tracking-opens`: Open tracking (yes/no)
+- `template`: Template name to use
+- `t:variables`: Template variables (JSON)
+- `h:X-Custom-Header`: Custom headers
+- `v:custom-data`: Custom data
+
+## Project structure
+
+```
+libre-mail-api/
+├── config/
+│   └── config.php          # Configuration
+├── src/
+│   ├── LibreMailApi.php    # Main class
+│   ├── MessageHandler.php  # Message handling
+│   ├── Storage.php         # Simulated storage
+│   └── Validator.php       # Data validation
+├── storage/                # Storage directory (auto-created)
+│   ├── messages/          # Saved messages
+│   ├── attachments/       # Attachments
+│   └── logs/             # Log files
+├── logs/                  # Application logs
+├── composer.json          # Dependencies
+├── index.php             # Entry point
+└── README.md             # Documentation
+```
+
+## Testing
+
+### Quick SMTP test
+Use the included test script to verify SMTP functionality:
+
+```bash
+# Complete SMTP test (replace with your email)
+php examples/test_smtp.php your-email@example.com
+
+# Test with custom URL
+php examples/test_smtp.php your-email@example.com http://localhost:8081
+```
+
+The script will test:
+- SMTP configuration status
+- SMTP server connection
+- Simple email sending
+- Email sending with attachment
+
+### SMTP endpoint testing
+```bash
+# Check SMTP status
+curl --user 'api:key-test123456789' \
+    http://localhost:8081/v3/sandbox.libremailapi.org/smtp
+
+# Test SMTP connection
+curl --user 'api:key-test123456789' \
+    http://localhost:8081/v3/sandbox.libremailapi.org/smtp/test
+```
+
+
+
+## Logging
+
+Logs are saved in `logs/libre-mail-api.log` and include:
+- Received requests
+- Sent messages
+- Errors and exceptions
+- Storage operations
+
+## Operating modes
+
+### Simulation mode (SMTP disabled)
+- Simulates email sending without actually sending them
+- Saves messages in JSON files for retrieval
+- Ideal for development and testing without spam
+
+### SMTP mode (SMTP enabled)
+- Sends real emails through configured SMTP server
+- Also maintains simulation for logging and debugging
+- Supports attachments, HTML, text and custom headers
+- Handles SMTP errors without breaking the API
+
+### Limitations
+
+- Local storage in JSON files (not database)
+- Simplified authentication (not OAuth)
+- No integration with advanced tracking services
+
+## Dependencies
+
+- **PHP >= 7.4**
+- **Guzzle HTTP**: HTTP client for requests
+- **Monolog**: Advanced logging
+- **Ramsey UUID**: UUID generation for identifiers
+- **PHPMailer**: SMTP email sending
+
+## Docker
+
+### Starting with Docker
+```bash
+# Build and start
+docker-compose up --build
+
+# Start only (after first build)
+docker-compose up
+
+# Start in background
+docker-compose up -d
+```
+
+### Starting with simple Docker
+```bash
+# Build image
+docker build -t libre-mail-api .
+
+# Start container with volume mapping for config and storage
+docker run -p 8080:8080 \
+  -v $(pwd)/config/config.php:/app/config/config.php \
+  -v $(pwd)/storage:/app/storage \
+  libre-mail-api
+```
+
+## Maintenance
+
+### Maintenance scripts
+```bash
+# Show statistics
+php scripts/maintenance.php stats
+
+# List messages
+php scripts/maintenance.php list
+
+# Clean old messages
+php scripts/maintenance.php cleanup
+
+# Help
+php scripts/maintenance.php help
+```
+
+### Manual cleanup
+```bash
+# Delete all messages
+rm storage/messages/*.json
+
+# Delete all attachments
+rm storage/attachments/*
+
+# Clean logs
+> logs/libre-mail-api.log
+```
+
+## Advanced testing
+
+### Complete test suite
+```bash
+# Run all tests
+php tests/ApiTest.php
+
+# Simple test
+php test_simple.php
+```
+
+
+
+### Detailed examples
+See `USAGE_EXAMPLES.md` for complete examples with:
+- cURL
+- PHP with Guzzle
+- JavaScript/Node.js
+- Python
+
+## Support the project
+
+This project is maintained and supported by **ILS Este** (Italian Linux Society - Este section), a local community in Veneto, Italy, that provides free and open-source services through [ServiziLiberi.it](https://serviziliberi.it) to its users.
+
+ILS Este operates entirely **without trackers, without ads, and completely free of charge**, believing in digital freedom and privacy rights for everyone. Our mission is to offer ethical alternatives to commercial services while respecting user privacy.
+
+**If this project has been useful to you, please consider supporting ILS Este's mission with a donation.** Your contribution helps maintain these free services and supports the development of new libre and open-source tools for the community.
+
+**💖 [Support ILS Este on Ko-fi](https://ko-fi.com/ilseste) 💖**
+
+Every donation, no matter how small, makes a difference in keeping these services free and accessible to everyone.
+
+## License
+
+AGPLv3 License - See LICENSE file for details.

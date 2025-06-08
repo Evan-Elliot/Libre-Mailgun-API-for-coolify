@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  libre-mail-api:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/config.php:/app/config/config.php
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+    environment:
+      - PHP_CLI_SERVER_WORKERS=4
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v3/sandbox.libremailapi.org/messages", "-u", "api:key-test123456789", "-X", "POST", "-d", "from=health@example.com", "-d", "to=check@example.com", "-d", "subject=Health Check", "-d", "text=OK"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Opzionale: Nginx come reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - libre-mail-api
+    restart: unless-stopped
+    profiles:
+      - production

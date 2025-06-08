@@ -1,0 +1,60 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+USAGE_EXAMPLES.md
+*.md
+
+# Development files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs (will be mounted as volume)
+logs/*
+!logs/.gitkeep
+
+# Storage (will be mounted as volume)
+storage/*
+!storage/.gitkeep
+
+# Test files
+test_simple.php
+tests/
+examples/
+
+# Composer dev dependencies
+vendor/phpunit/
+vendor/sebastian/
+vendor/myclabs/
+vendor/doctrine/instantiator
+vendor/phar-io/
+vendor/theseer/
+vendor/nikic/php-parser
+
+# Node modules (if any)
+node_modules/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Custom files
+config/config.php
+logs/*
+storage/attachments/*
+storage/logs/*
+storage/messages/*
+storage/stats.json
