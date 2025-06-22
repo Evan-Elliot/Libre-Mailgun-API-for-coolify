@@ -290,24 +290,28 @@ class MessageHandler
 
     private function processMessage($domain, $postData, $files, $messageId)
     {
+        // Handle multiple 'to' parameters (Mailgun native format)
+        $toRecipients = $this->normalizeRecipients($postData['to']);
+
         $message = [
             'message_id' => $messageId,
             'domain' => $domain,
             'from' => $postData['from'],
-            'to' => $postData['to'],
+            'to' => $toRecipients, // Now always a comma-separated string
             'cc' => $postData['cc'] ?? '',
             'bcc' => $postData['bcc'] ?? '',
             'subject' => $postData['subject'],
             'text' => $postData['text'] ?? '',
             'html' => $postData['html'] ?? '',
             'sender' => $this->extractEmail($postData['from']),
-            'recipients' => $this->extractEmails($postData['to']),
+            'recipients' => $this->extractEmails($toRecipients),
             'timestamp' => time(),
             'content_type' => 'multipart/form-data',
             'headers' => $this->buildHeaders($postData),
             'tags' => $postData['o:tag'] ?? '',
             'template' => $postData['template'] ?? '',
             'template_variables' => $postData['t:variables'] ?? '{}',
+            'recipient_variables' => $postData['recipient-variables'] ?? '{}',
             'attachments' => $this->processAttachments($files)
         ];
 
@@ -346,21 +350,41 @@ class MessageHandler
     {
         $emails = [];
         $parts = explode(',', $emailString);
-        
+
         foreach ($parts as $part) {
             $emails[] = $this->extractEmail(trim($part));
         }
-        
+
         return implode(', ', $emails);
+    }
+
+    /**
+     * Normalize recipients to handle both formats:
+     * 1. Comma-separated string: "email1@example.com,email2@example.com"
+     * 2. Array from multiple form fields: ["email1@example.com", "email2@example.com"]
+     */
+    private function normalizeRecipients($toData)
+    {
+        if (is_array($toData)) {
+            // Multiple 'to' parameters (Mailgun native format)
+            // PHP receives them as an array
+            return implode(',', array_map('trim', $toData));
+        } else {
+            // Single 'to' parameter with comma-separated emails
+            return trim($toData);
+        }
     }
 
     private function buildHeaders($postData)
     {
+        // Normalize recipients for headers
+        $toRecipients = $this->normalizeRecipients($postData['to']);
+
         $headers = [
             ['Mime-Version', '1.0'],
             ['Subject', $postData['subject']],
             ['From', $postData['from']],
-            ['To', $postData['to']],
+            ['To', $toRecipients],
             ['Content-Transfer-Encoding', '7bit']
         ];
 

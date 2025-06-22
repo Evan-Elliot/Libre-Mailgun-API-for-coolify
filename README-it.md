@@ -161,6 +161,17 @@ curl -s --user 'api:key-test123456789' \
     -F subject='Newsletter settimanale' \
     -F text='Questa settimana nella nostra newsletter...' \
     -F html='<h1>Newsletter settimanale</h1><p>Questa settimana nella nostra newsletter...</p>'
+
+# Formato nativo Mailgun con personalizzazione (ognuno riceve un'email individuale)
+curl -s --user 'api:key-test123456789' \
+    http://localhost:8080/v3/sandbox.libremailapi.org/messages \
+    -F from='Newsletter <newsletter@sandbox.libremailapi.org>' \
+    -F to='utente1@example.com' \
+    -F to='utente2@example.com' \
+    -F to='utente3@example.com' \
+    -F subject='Ciao %recipient.name%' \
+    -F html='<p>Ciao %recipient.name%,</p><p>Questo è un messaggio personalizzato per te.</p>' \
+    -F 'recipient-variables={"utente1@example.com": {"name": "Mario"}, "utente2@example.com": {"name": "Luigi"}, "utente3@example.com": {"name": "Giuseppe"}}'
 ```
 
 ### Esempio con PHP e Guzzle
@@ -213,7 +224,15 @@ echo "Destinatari processati: " . $result['smtp_total_recipients'] . "\n";
 - `cc`: destinatari in copia (separati da virgola)
 - `bcc`: destinatari in copia nascosta (separati da virgola)
 
-**Nota sui destinatari multipli**: quando vengono specificati più destinatari nel campo `to` (separati da virgola), ogni destinatario riceve un'email individuale. I destinatari CC e BCC vengono inclusi in ogni singola email inviata.
+**Nota sui destinatari multipli**: LibreMailApi supporta due formati per destinatari multipli:
+1. **Separati da virgola**: `to=utente1@example.com,utente2@example.com,utente3@example.com`
+2. **Formato nativo Mailgun**: Parametri `to` multipli con `recipient-variables` per la personalizzazione
+
+In entrambi i casi, ogni destinatario riceve un'email individuale. I destinatari CC e BCC vengono inclusi in ogni singola email inviata.
+
+#### Variabili destinatario
+- `recipient-variables`: Oggetto JSON con dati di personalizzazione per ogni destinatario
+- Le variabili possono essere usate in oggetto, testo e contenuto HTML usando il formato `%recipient.variabile%`
 
 #### Parametri avanzati
 - `o:tag`: tag per categorizzare i messaggi

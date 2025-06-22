@@ -56,6 +56,22 @@ curl --user 'api:key-test123456789' \
 
 **Nota**: ogni destinatario nel campo `to` riceve un'email individuale. I destinatari CC e BCC vengono inclusi in ogni singola email inviata.
 
+### 4. Formato nativo Mailgun con personalizzazione
+
+```bash
+curl --user 'api:key-test123456789' \
+    http://localhost:8081/v3/sandbox.libremailapi.org/messages \
+    -F from='Newsletter <newsletter@example.com>' \
+    -F to='utente1@example.com' \
+    -F to='utente2@example.com' \
+    -F to='utente3@example.com' \
+    -F subject='Ciao %recipient.name%' \
+    -F html='<p>Ciao %recipient.name%,</p><p>Questo è un messaggio personalizzato per te.</p>' \
+    -F 'recipient-variables={"utente1@example.com": {"name": "Mario"}, "utente2@example.com": {"name": "Luigi"}, "utente3@example.com": {"name": "Giuseppe"}}'
+```
+
+**Nota**: questo formato permette la personalizzazione usando segnaposto `%recipient.variabile%` che vengono sostituiti con i valori reali per ogni destinatario.
+
 ### 4. Email con tag e tracking
 
 ```bash

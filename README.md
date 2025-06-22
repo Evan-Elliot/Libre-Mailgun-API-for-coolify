@@ -161,6 +161,17 @@ curl -s --user 'api:key-test123456789' \
     -F subject='Weekly Newsletter' \
     -F text='This week in our newsletter...' \
     -F html='<h1>Weekly Newsletter</h1><p>This week in our newsletter...</p>'
+
+# Mailgun native format with personalization (each gets individual email)
+curl -s --user 'api:key-test123456789' \
+    http://localhost:8080/v3/sandbox.libremailapi.org/messages \
+    -F from='Newsletter <newsletter@sandbox.libremailapi.org>' \
+    -F to='user1@example.com' \
+    -F to='user2@example.com' \
+    -F to='user3@example.com' \
+    -F subject='Hello %recipient.name%' \
+    -F html='<p>Hi %recipient.name%,</p><p>This is a personalized message for you.</p>' \
+    -F 'recipient-variables={"user1@example.com": {"name": "User One"}, "user2@example.com": {"name": "User Two"}, "user3@example.com": {"name": "User Three"}}'
 ```
 
 ### Example with PHP and Guzzle
@@ -213,7 +224,15 @@ echo "Recipients processed: " . $result['smtp_total_recipients'] . "\n";
 - `cc`: Carbon copy recipients (comma-separated)
 - `bcc`: Blind carbon copy recipients (comma-separated)
 
-**Note on multiple recipients**: When multiple recipients are specified in the `to` field (comma-separated), each recipient receives an individual email. CC and BCC recipients are included in each individual email sent.
+**Note on multiple recipients**: LibreMailApi supports two formats for multiple recipients:
+1. **Comma-separated**: `to=user1@example.com,user2@example.com,user3@example.com`
+2. **Mailgun native**: Multiple `to` parameters with `recipient-variables` for personalization
+
+In both cases, each recipient receives an individual email. CC and BCC recipients are included in each individual email sent.
+
+#### Recipient variables
+- `recipient-variables`: JSON object with personalization data for each recipient
+- Variables can be used in subject, text, and HTML content using `%recipient.variable%` format
 
 #### Advanced parameters
 - `o:tag`: Tags to categorize messages

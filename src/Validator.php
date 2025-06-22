@@ -254,22 +254,36 @@ class Validator
     private function countRecipients($data)
     {
         $count = 0;
-        
+
         // Count TO recipients
         if (isset($data['to'])) {
-            $count += count(explode(',', $data['to']));
+            if (is_array($data['to'])) {
+                // Mailgun native format: multiple 'to' parameters as array
+                $count += count($data['to']);
+            } else {
+                // Comma-separated format
+                $count += count(explode(',', $data['to']));
+            }
         }
-        
+
         // Count CC recipients
         if (isset($data['cc'])) {
-            $count += count(explode(',', $data['cc']));
+            if (is_array($data['cc'])) {
+                $count += count($data['cc']);
+            } else {
+                $count += count(explode(',', $data['cc']));
+            }
         }
-        
+
         // Count BCC recipients
         if (isset($data['bcc'])) {
-            $count += count(explode(',', $data['bcc']));
+            if (is_array($data['bcc'])) {
+                $count += count($data['bcc']);
+            } else {
+                $count += count(explode(',', $data['bcc']));
+            }
         }
-        
+
         return $count;
     }
 }

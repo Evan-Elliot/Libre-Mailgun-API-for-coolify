@@ -136,19 +136,36 @@ class SmtpHandler
                     $this->mailer->addReplyTo($replyTo);
                 }
 
-                // Set subject
-                $this->mailer->Subject = $message['subject'] ?? '';
+                // Set body content with recipient-specific variables
+                $htmlBody = $message['html'] ?? '';
+                $textBody = $message['text'] ?? '';
+                $subject = $message['subject'] ?? '';
 
-                // Set body content
-                if (!empty($message['html'])) {
+                // Apply recipient-specific variables if present
+                if (!empty($message['recipient_variables'])) {
+                    $recipientVars = json_decode($message['recipient_variables'], true);
+                    if (isset($recipientVars[$toRecipient['email']])) {
+                        $vars = $recipientVars[$toRecipient['email']];
+
+                        // Replace variables in subject, HTML and text
+                        $subject = $this->replaceRecipientVariables($subject, $vars);
+                        $htmlBody = $this->replaceRecipientVariables($htmlBody, $vars);
+                        $textBody = $this->replaceRecipientVariables($textBody, $vars);
+                    }
+                }
+
+                // Set the personalized subject
+                $this->mailer->Subject = $subject;
+
+                if (!empty($htmlBody)) {
                     $this->mailer->isHTML(true);
-                    $this->mailer->Body = $message['html'];
-                    if (!empty($message['text'])) {
-                        $this->mailer->AltBody = $message['text'];
+                    $this->mailer->Body = $htmlBody;
+                    if (!empty($textBody)) {
+                        $this->mailer->AltBody = $textBody;
                     }
                 } else {
                     $this->mailer->isHTML(false);
-                    $this->mailer->Body = $message['text'] ?? '';
+                    $this->mailer->Body = $textBody;
                 }
 
                 // Add custom headers
@@ -414,12 +431,31 @@ class SmtpHandler
     }
 
     /**
+     * Replace recipient variables in content (Mailgun format: %recipient.variable%)
+     */
+    private function replaceRecipientVariables($content, $variables)
+    {
+        if (empty($variables) || !is_array($variables)) {
+            return $content;
+        }
+
+        foreach ($variables as $key => $value) {
+            // Replace Mailgun format: %recipient.key%
+            $content = str_replace("%recipient.{$key}%", $value, $content);
+            // Also support simple format: %key%
+            $content = str_replace("%{$key}%", $value, $content);
+        }
+
+        return $content;
+    }
+
+    /**
      * Check if SMTP is enabled in configuration
      */
     public function isEnabled()
     {
-        return !empty($this->config['smtp']['enabled']) && 
-               !empty($this->config['smtp']['host']) && 
+        return !empty($this->config['smtp']['enabled']) &&
+               !empty($this->config['smtp']['host']) &&
                !empty($this->config['smtp']['username']);
     }
 }
