@@ -293,6 +293,9 @@ class MessageHandler
         // Handle multiple 'to' parameters (Mailgun native format)
         $toRecipients = $this->normalizeRecipients($postData['to']);
 
+        // Generate recipient-variables if not provided and we have multiple recipients
+        $recipientVariables = $this->generateRecipientVariables($postData);
+
         $message = [
             'message_id' => $messageId,
             'domain' => $domain,
@@ -311,7 +314,7 @@ class MessageHandler
             'tags' => $postData['o:tag'] ?? '',
             'template' => $postData['template'] ?? '',
             'template_variables' => $postData['t:variables'] ?? '{}',
-            'recipient_variables' => $postData['recipient-variables'] ?? '{}',
+            'recipient_variables' => $recipientVariables,
             'attachments' => $this->processAttachments($files)
         ];
 
@@ -372,6 +375,104 @@ class MessageHandler
         } else {
             // Single 'to' parameter with comma-separated emails
             return trim($toData);
+        }
+    }
+
+    /**
+     * Generate recipient-variables JSON for multiple recipients
+     * This creates a JSON object with recipient email as key and extracted name/email info as values
+     * Format matches Mailgun's expected structure with first/last name separation
+     */
+    private function generateRecipientVariables($postData)
+    {
+        // If recipient-variables is already provided, use it
+        if (!empty($postData['recipient-variables'])) {
+            return $postData['recipient-variables'];
+        }
+
+        // If we don't have multiple recipients, return empty JSON
+        if (!is_array($postData['to'])) {
+            return '{}';
+        }
+
+        $recipientVariables = [];
+        $recipientIndex = 1;
+
+        foreach ($postData['to'] as $recipient) {
+            $recipient = trim($recipient);
+            if (empty($recipient)) {
+                continue;
+            }
+
+            $email = $this->extractEmail($recipient);
+            $name = $this->extractName($recipient);
+
+            // Split name into first and last parts
+            $nameParts = $this->splitName($name);
+
+            // Create variables for this recipient (Mailgun format)
+            $recipientVariables[$email] = [
+                'first' => $nameParts['first'],
+                'last' => $nameParts['last'],
+                'id' => 'to_' . $recipientIndex
+            ];
+
+            $recipientIndex++;
+        }
+
+        return json_encode($recipientVariables);
+    }
+
+    /**
+     * Extract name from email string like "John Doe <john@example.com>" or just "john@example.com"
+     */
+    private function extractName($emailString)
+    {
+        $emailString = trim($emailString);
+
+        // Check if it's in format "Name <email@domain.com>"
+        if (preg_match('/^"?([^"<]+)"?\s*<[^>]+>$/', $emailString, $matches)) {
+            return trim($matches[1], '"');
+        }
+
+        // Check if it's in format Name <email@domain.com> without quotes
+        if (preg_match('/^([^<]+)\s*<[^>]+>$/', $emailString, $matches)) {
+            return trim($matches[1]);
+        }
+
+        // If it's just an email, extract the local part as name
+        $email = $this->extractEmail($emailString);
+        $localPart = strstr($email, '@', true);
+
+        // Convert email local part to a more readable name
+        return ucwords(str_replace(['.', '_', '-'], ' ', $localPart));
+    }
+
+    /**
+     * Split a full name into first and last name parts
+     */
+    private function splitName($fullName)
+    {
+        $fullName = trim($fullName);
+
+        if (empty($fullName)) {
+            return ['first' => '', 'last' => ''];
+        }
+
+        // Split by spaces
+        $parts = explode(' ', $fullName);
+        $parts = array_filter($parts); // Remove empty parts
+        $parts = array_values($parts); // Re-index
+
+        if (count($parts) === 0) {
+            return ['first' => '', 'last' => ''];
+        } elseif (count($parts) === 1) {
+            return ['first' => $parts[0], 'last' => ''];
+        } else {
+            // First part is first name, everything else is last name
+            $first = $parts[0];
+            $last = implode(' ', array_slice($parts, 1));
+            return ['first' => $first, 'last' => $last];
         }
     }
 
