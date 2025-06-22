@@ -296,7 +296,22 @@ class SmtpHandler
     private function extractName($emailString)
     {
         if (preg_match('/^([^<]+)</', $emailString, $matches)) {
-            return trim($matches[1]);
+            $name = trim($matches[1]);
+
+            // Remove outer quotes if present (both single and double quotes)
+            if (preg_match('/^["\'](.+)["\']$/', $name, $quoteMatches)) {
+                $name = $quoteMatches[1];
+
+                // Remove escaped characters (handles cases like \"Name\" -> "Name")
+                $name = stripslashes($name);
+
+                // Remove quotes again if they were escaped (handles "\"Name\"" -> Name)
+                if (preg_match('/^["\'](.+)["\']$/', $name, $innerQuotes)) {
+                    $name = $innerQuotes[1];
+                }
+            }
+
+            return $name;
         }
         return '';
     }
