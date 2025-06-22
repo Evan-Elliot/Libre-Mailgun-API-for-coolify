@@ -52,7 +52,16 @@ class MessageHandler
                     // Log SMTP failure but don't fail the API call (maintain Mailgun compatibility)
                     $this->logger->warning("SMTP sending failed, message stored for simulation", [
                         'message_id' => $messageId,
-                        'smtp_error' => $smtpResult['error'] ?? 'Unknown error'
+                        'total_recipients' => $smtpResult['total_recipients'] ?? 0,
+                        'successful_sends' => $smtpResult['successful_sends'] ?? 0,
+                        'failed_sends' => $smtpResult['failed_sends'] ?? 0,
+                        'smtp_errors' => $smtpResult['errors'] ?? ['Unknown error']
+                    ]);
+                } else {
+                    $this->logger->info("SMTP sending successful for all recipients", [
+                        'message_id' => $messageId,
+                        'total_recipients' => $smtpResult['total_recipients'] ?? 0,
+                        'successful_sends' => $smtpResult['successful_sends'] ?? 0
                     ]);
                 }
             }
@@ -69,8 +78,11 @@ class MessageHandler
             if ($smtpResult) {
                 $logData['smtp_enabled'] = true;
                 $logData['smtp_success'] = $smtpResult['success'];
+                $logData['total_recipients'] = $smtpResult['total_recipients'] ?? 0;
+                $logData['successful_sends'] = $smtpResult['successful_sends'] ?? 0;
+                $logData['failed_sends'] = $smtpResult['failed_sends'] ?? 0;
                 if (!$smtpResult['success']) {
-                    $logData['smtp_error'] = $smtpResult['error'];
+                    $logData['smtp_errors'] = $smtpResult['errors'] ?? [];
                 }
             } else {
                 $logData['smtp_enabled'] = false;
@@ -86,9 +98,12 @@ class MessageHandler
 
             // Add SMTP status to response if enabled (for debugging)
             if ($this->smtpHandler && $this->smtpHandler->isEnabled()) {
-                $responseData['smtp_status'] = $smtpResult['success'] ? 'sent' : 'failed';
+                $responseData['smtp_status'] = $smtpResult['success'] ? 'sent' : 'partial_or_failed';
+                $responseData['smtp_total_recipients'] = $smtpResult['total_recipients'] ?? 0;
+                $responseData['smtp_successful_sends'] = $smtpResult['successful_sends'] ?? 0;
+                $responseData['smtp_failed_sends'] = $smtpResult['failed_sends'] ?? 0;
                 if (!$smtpResult['success']) {
-                    $responseData['smtp_error'] = $smtpResult['error'] ?? 'Unknown error';
+                    $responseData['smtp_errors'] = $smtpResult['errors'] ?? ['Unknown error'];
                 }
             }
 
@@ -129,7 +144,16 @@ class MessageHandler
                     // Log SMTP failure but don't fail the API call (maintain Mailgun compatibility)
                     $this->logger->warning("SMTP MIME sending failed, message stored for simulation", [
                         'message_id' => $messageId,
-                        'smtp_error' => $smtpResult['error'] ?? 'Unknown error'
+                        'total_recipients' => $smtpResult['total_recipients'] ?? 0,
+                        'successful_sends' => $smtpResult['successful_sends'] ?? 0,
+                        'failed_sends' => $smtpResult['failed_sends'] ?? 0,
+                        'smtp_errors' => $smtpResult['errors'] ?? ['Unknown error']
+                    ]);
+                } else {
+                    $this->logger->info("SMTP MIME sending successful for all recipients", [
+                        'message_id' => $messageId,
+                        'total_recipients' => $smtpResult['total_recipients'] ?? 0,
+                        'successful_sends' => $smtpResult['successful_sends'] ?? 0
                     ]);
                 }
             }
@@ -145,8 +169,11 @@ class MessageHandler
             if ($smtpResult) {
                 $logData['smtp_enabled'] = true;
                 $logData['smtp_success'] = $smtpResult['success'];
+                $logData['total_recipients'] = $smtpResult['total_recipients'] ?? 0;
+                $logData['successful_sends'] = $smtpResult['successful_sends'] ?? 0;
+                $logData['failed_sends'] = $smtpResult['failed_sends'] ?? 0;
                 if (!$smtpResult['success']) {
-                    $logData['smtp_error'] = $smtpResult['error'];
+                    $logData['smtp_errors'] = $smtpResult['errors'] ?? [];
                 }
             } else {
                 $logData['smtp_enabled'] = false;
@@ -162,9 +189,12 @@ class MessageHandler
 
             // Add SMTP status to response if enabled (for debugging)
             if ($this->smtpHandler && $this->smtpHandler->isEnabled()) {
-                $responseData['smtp_status'] = $smtpResult['success'] ? 'sent' : 'failed';
+                $responseData['smtp_status'] = $smtpResult['success'] ? 'sent' : 'partial_or_failed';
+                $responseData['smtp_total_recipients'] = $smtpResult['total_recipients'] ?? 0;
+                $responseData['smtp_successful_sends'] = $smtpResult['successful_sends'] ?? 0;
+                $responseData['smtp_failed_sends'] = $smtpResult['failed_sends'] ?? 0;
                 if (!$smtpResult['success']) {
-                    $responseData['smtp_error'] = $smtpResult['error'] ?? 'Unknown error';
+                    $responseData['smtp_errors'] = $smtpResult['errors'] ?? ['Unknown error'];
                 }
             }
 

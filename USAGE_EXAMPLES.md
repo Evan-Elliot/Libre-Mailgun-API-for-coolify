@@ -40,18 +40,21 @@ curl --user 'api:key-test123456789' \
     -F html='<h1>HTML Version</h1><p>This is the <strong>HTML</strong> version.</p>'
 ```
 
-### 3. Email with multiple recipients
+### 3. Email with multiple recipients (each gets individual email)
 
 ```bash
 curl --user 'api:key-test123456789' \
     http://localhost:8081/v3/sandbox.libremailapi.org/messages \
-    -F from='sender@example.com' \
-    -F to='user1@example.com,user2@example.com' \
+    -F from='Newsletter <newsletter@example.com>' \
+    -F to='user1@example.com,user2@example.com,user3@example.com' \
     -F cc='manager@example.com' \
     -F bcc='admin@example.com' \
-    -F subject='Multiple Recipients' \
-    -F text='This email goes to multiple people.'
+    -F subject='Weekly Newsletter' \
+    -F text='This week in our newsletter...' \
+    -F html='<h1>Weekly Newsletter</h1><p>This week in our newsletter...</p>'
 ```
+
+**Note**: Each recipient in the `to` field receives an individual email. CC and BCC recipients are included in each individual email sent.
 
 ### 4. Email with tags and tracking
 
@@ -221,6 +224,26 @@ $result = json_decode($response->getBody(), true);
 echo "Message ID: " . $result['id'] . "\n";
 ```
 
+### Email to multiple recipients (each gets individual email)
+
+```php
+$response = $client->post('/v3/sandbox.libremailapi.org/messages', [
+    'form_params' => [
+        'from' => 'Newsletter <newsletter@example.com>',
+        'to' => 'user1@example.com,user2@example.com,user3@example.com',
+        'cc' => 'manager@example.com',
+        'subject' => 'Weekly Newsletter',
+        'text' => 'This week in our newsletter...',
+        'html' => '<h1>Weekly Newsletter</h1><p>This week in our newsletter...</p>'
+    ]
+]);
+
+$result = json_decode($response->getBody(), true);
+echo "Message ID: " . $result['id'] . "\n";
+echo "Recipients processed: " . ($result['smtp_total_recipients'] ?? 'N/A') . "\n";
+echo "Successful sends: " . ($result['smtp_successful_sends'] ?? 'N/A') . "\n";
+```
+
 ### Email with attachment
 
 ```php
@@ -321,6 +344,7 @@ const client = axios.create({
 ```javascript
 const FormData = require('form-data');
 
+// Simple email
 const form = new FormData();
 form.append('from', 'sender@example.com');
 form.append('to', 'recipient@example.com');
@@ -336,6 +360,27 @@ client.post('/v3/sandbox.libremailapi.org/messages', form, {
 .catch(error => {
     console.error('Error:', error.response.data);
 });
+
+// Email to multiple recipients (each gets individual email)
+const multiForm = new FormData();
+multiForm.append('from', 'Newsletter <newsletter@example.com>');
+multiForm.append('to', 'user1@example.com,user2@example.com,user3@example.com');
+multiForm.append('cc', 'manager@example.com');
+multiForm.append('subject', 'Weekly Newsletter');
+multiForm.append('text', 'This week in our newsletter...');
+multiForm.append('html', '<h1>Weekly Newsletter</h1><p>This week in our newsletter...</p>');
+
+client.post('/v3/sandbox.libremailapi.org/messages', multiForm, {
+    headers: multiForm.getHeaders()
+})
+.then(response => {
+    console.log('Message ID:', response.data.id);
+    console.log('Recipients processed:', response.data.smtp_total_recipients || 'N/A');
+    console.log('Successful sends:', response.data.smtp_successful_sends || 'N/A');
+})
+.catch(error => {
+    console.error('Error:', error.response.data);
+});
 ```
 
 ## Examples with Python
@@ -345,7 +390,7 @@ client.post('/v3/sandbox.libremailapi.org/messages', form, {
 ```python
 import requests
 
-def send_email():
+def send_simple_email():
     response = requests.post(
         'http://localhost:8081/v3/sandbox.libremailapi.org/messages',
         auth=('api', 'key-test123456789'),
@@ -363,7 +408,32 @@ def send_email():
     else:
         print(f"Error: {response.text}")
 
-send_email()
+def send_multiple_recipients():
+    # Email to multiple recipients (each gets individual email)
+    response = requests.post(
+        'http://localhost:8081/v3/sandbox.libremailapi.org/messages',
+        auth=('api', 'key-test123456789'),
+        data={
+            'from': 'Newsletter <newsletter@example.com>',
+            'to': 'user1@example.com,user2@example.com,user3@example.com',
+            'cc': 'manager@example.com',
+            'subject': 'Weekly Newsletter',
+            'text': 'This week in our newsletter...',
+            'html': '<h1>Weekly Newsletter</h1><p>This week in our newsletter...</p>'
+        }
+    )
+
+    if response.status_code == 200:
+        result = response.json()
+        print(f"Message ID: {result['id']}")
+        print(f"Recipients processed: {result.get('smtp_total_recipients', 'N/A')}")
+        print(f"Successful sends: {result.get('smtp_successful_sends', 'N/A')}")
+    else:
+        print(f"Error: {response.text}")
+
+# Run examples
+send_simple_email()
+send_multiple_recipients()
 ```
 
 ## Testing and debugging

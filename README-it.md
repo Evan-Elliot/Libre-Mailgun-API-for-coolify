@@ -151,6 +151,16 @@ curl -s --user 'api:key-test123456789' \
     -F to='test@example.com' \
     -F subject='Hello' \
     -F text='Testing some LibreMailApi awesomeness!'
+
+# Invia email a destinatari multipli (ognuno riceve un'email individuale)
+curl -s --user 'api:key-test123456789' \
+    http://localhost:8080/v3/sandbox.libremailapi.org/messages \
+    -F from='Newsletter <newsletter@sandbox.libremailapi.org>' \
+    -F to='utente1@example.com,utente2@example.com,utente3@example.com' \
+    -F cc='manager@example.com' \
+    -F subject='Newsletter settimanale' \
+    -F text='Questa settimana nella nostra newsletter...' \
+    -F html='<h1>Newsletter settimanale</h1><p>Questa settimana nella nostra newsletter...</p>'
 ```
 
 ### Esempio con PHP e Guzzle
@@ -160,6 +170,7 @@ use GuzzleHttp\Client;
 
 $client = new Client();
 
+// Email semplice
 $response = $client->post('http://localhost:8080/v3/sandbox.libremailapi.org/messages', [
     'auth' => ['api', 'key-test123456789'],
     'form_params' => [
@@ -172,18 +183,37 @@ $response = $client->post('http://localhost:8080/v3/sandbox.libremailapi.org/mes
 
 $result = json_decode($response->getBody(), true);
 echo "Message ID: " . $result['id'] . "\n";
+
+// Email a destinatari multipli (ognuno riceve un'email individuale)
+$response = $client->post('http://localhost:8080/v3/sandbox.libremailapi.org/messages', [
+    'auth' => ['api', 'key-test123456789'],
+    'form_params' => [
+        'from' => 'Newsletter <newsletter@sandbox.libremailapi.org>',
+        'to' => 'utente1@example.com,utente2@example.com,utente3@example.com',
+        'cc' => 'manager@example.com',
+        'subject' => 'Newsletter settimanale',
+        'text' => 'Questa settimana nella nostra newsletter...',
+        'html' => '<h1>Newsletter settimanale</h1><p>Questa settimana nella nostra newsletter...</p>'
+    ]
+]);
+
+$result = json_decode($response->getBody(), true);
+echo "Message ID: " . $result['id'] . "\n";
+echo "Destinatari processati: " . $result['smtp_total_recipients'] . "\n";
 ```
 
 ### Parametri supportati
 
 #### Parametri base
 - `from` (required): indirizzo email mittente
-- `to` (required): indirizzi email destinatari
+- `to` (required): indirizzi email destinatari (separati da virgola per destinatari multipli)
 - `subject` (required): oggetto del messaggio
 - `text`: corpo del messaggio in formato testo
 - `html`: corpo del messaggio in formato HTML
-- `cc`: destinatari in copia
-- `bcc`: destinatari in copia nascosta
+- `cc`: destinatari in copia (separati da virgola)
+- `bcc`: destinatari in copia nascosta (separati da virgola)
+
+**Nota sui destinatari multipli**: quando vengono specificati più destinatari nel campo `to` (separati da virgola), ogni destinatario riceve un'email individuale. I destinatari CC e BCC vengono inclusi in ogni singola email inviata.
 
 #### Parametri avanzati
 - `o:tag`: tag per categorizzare i messaggi

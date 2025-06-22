@@ -151,6 +151,16 @@ curl -s --user 'api:key-test123456789' \
     -F to='test@example.com' \
     -F subject='Hello' \
     -F text='Testing some LibreMailApi awesomeness!'
+
+# Send email to multiple recipients (each gets individual email)
+curl -s --user 'api:key-test123456789' \
+    http://localhost:8080/v3/sandbox.libremailapi.org/messages \
+    -F from='Newsletter <newsletter@sandbox.libremailapi.org>' \
+    -F to='user1@example.com,user2@example.com,user3@example.com' \
+    -F cc='manager@example.com' \
+    -F subject='Weekly Newsletter' \
+    -F text='This week in our newsletter...' \
+    -F html='<h1>Weekly Newsletter</h1><p>This week in our newsletter...</p>'
 ```
 
 ### Example with PHP and Guzzle
@@ -160,6 +170,7 @@ use GuzzleHttp\Client;
 
 $client = new Client();
 
+// Simple email
 $response = $client->post('http://localhost:8080/v3/sandbox.libremailapi.org/messages', [
     'auth' => ['api', 'key-test123456789'],
     'form_params' => [
@@ -172,18 +183,37 @@ $response = $client->post('http://localhost:8080/v3/sandbox.libremailapi.org/mes
 
 $result = json_decode($response->getBody(), true);
 echo "Message ID: " . $result['id'] . "\n";
+
+// Email to multiple recipients (each gets individual email)
+$response = $client->post('http://localhost:8080/v3/sandbox.libremailapi.org/messages', [
+    'auth' => ['api', 'key-test123456789'],
+    'form_params' => [
+        'from' => 'Newsletter <newsletter@sandbox.libremailapi.org>',
+        'to' => 'user1@example.com,user2@example.com,user3@example.com',
+        'cc' => 'manager@example.com',
+        'subject' => 'Weekly Newsletter',
+        'text' => 'This week in our newsletter...',
+        'html' => '<h1>Weekly Newsletter</h1><p>This week in our newsletter...</p>'
+    ]
+]);
+
+$result = json_decode($response->getBody(), true);
+echo "Message ID: " . $result['id'] . "\n";
+echo "Recipients processed: " . $result['smtp_total_recipients'] . "\n";
 ```
 
 ### Supported parameters
 
 #### Basic parameters
 - `from` (required): Sender email address
-- `to` (required): Recipient email addresses
+- `to` (required): Recipient email addresses (comma-separated for multiple recipients)
 - `subject` (required): Message subject
 - `text`: Message body in text format
 - `html`: Message body in HTML format
-- `cc`: Carbon copy recipients
-- `bcc`: Blind carbon copy recipients
+- `cc`: Carbon copy recipients (comma-separated)
+- `bcc`: Blind carbon copy recipients (comma-separated)
+
+**Note on multiple recipients**: When multiple recipients are specified in the `to` field (comma-separated), each recipient receives an individual email. CC and BCC recipients are included in each individual email sent.
 
 #### Advanced parameters
 - `o:tag`: Tags to categorize messages

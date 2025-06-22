@@ -35,35 +35,36 @@ class SmtpHandler
         $this->mailer->isSMTP();
         $this->mailer->Host = $this->config['smtp']['host'];
         $this->mailer->Port = $this->config['smtp']['port'];
-        $this->mailer->Timeout = $this->config['smtp']['timeout'];
+        $this->mailer->Timeout = $this->config['smtp']['timeout'] ?? 30;
 
         // Authentication
-        if ($this->config['smtp']['auth']) {
+        if ($this->config['smtp']['auth'] ?? false) {
             $this->mailer->SMTPAuth = true;
             $this->mailer->Username = $this->config['smtp']['username'];
             $this->mailer->Password = $this->config['smtp']['password'];
         }
 
         // Encryption
-        if ($this->config['smtp']['encryption'] === 'tls') {
+        $encryption = $this->config['smtp']['encryption'] ?? '';
+        if ($encryption === 'tls') {
             $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        } elseif ($this->config['smtp']['encryption'] === 'ssl') {
+        } elseif ($encryption === 'ssl') {
             $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
         }
 
         // SSL options
-        if (!$this->config['smtp']['verify_peer']) {
+        if (!($this->config['smtp']['verify_peer'] ?? true)) {
             $this->mailer->SMTPOptions = [
                 'ssl' => [
                     'verify_peer' => false,
                     'verify_peer_name' => false,
-                    'allow_self_signed' => $this->config['smtp']['allow_self_signed']
+                    'allow_self_signed' => $this->config['smtp']['allow_self_signed'] ?? false
                 ]
             ];
         }
 
         // Debug settings
-        if ($this->config['smtp']['debug']) {
+        if ($this->config['smtp']['debug'] ?? false) {
             $this->mailer->SMTPDebug = SMTP::DEBUG_SERVER;
             $this->mailer->Debugoutput = function($str, $level) {
                 $this->logger->debug("SMTP Debug: " . trim($str));
@@ -76,137 +77,174 @@ class SmtpHandler
      */
     public function sendMessage($message)
     {
-        try {
-            // Reset mailer for new message
-            $this->mailer->clearAllRecipients();
-            $this->mailer->clearAttachments();
-            $this->mailer->clearCustomHeaders();
+        // Parse recipients for 'to' field
+        $toRecipients = $this->parseRecipients($message['to']);
 
-            // Set sender
-            $fromEmail = $this->extractEmail($message['from']);
-            $fromName = $this->extractName($message['from']);
-            
-            if (empty($fromEmail)) {
-                $fromEmail = $this->config['smtp']['from_email'];
-                $fromName = $this->config['smtp']['from_name'];
-            }
+        // If no recipients, return error
+        if (empty($toRecipients)) {
+            return [
+                'success' => false,
+                'error' => 'No valid recipients found in "to" field'
+            ];
+        }
 
-            $this->mailer->setFrom($fromEmail, $fromName);
+        $results = [];
+        $overallSuccess = true;
+        $errors = [];
 
-            // Set recipients
-            $recipients = $this->parseRecipients($message['to']);
-            foreach ($recipients as $recipient) {
-                $this->mailer->addAddress($recipient['email'], $recipient['name']);
-            }
+        // Send separate email to each 'to' recipient
+        foreach ($toRecipients as $index => $toRecipient) {
+            try {
+                // Reset mailer for new message
+                $this->mailer->clearAllRecipients();
+                $this->mailer->clearAttachments();
+                $this->mailer->clearCustomHeaders();
 
-            // Set CC recipients if present
-            if (!empty($message['cc'])) {
-                $ccRecipients = $this->parseRecipients($message['cc']);
-                foreach ($ccRecipients as $recipient) {
-                    $this->mailer->addCC($recipient['email'], $recipient['name']);
+                // Set sender
+                $fromEmail = $this->extractEmail($message['from']);
+                $fromName = $this->extractName($message['from']);
+
+                if (empty($fromEmail)) {
+                    $fromEmail = $this->config['smtp']['from_email'];
+                    $fromName = $this->config['smtp']['from_name'];
                 }
-            }
 
-            // Set BCC recipients if present
-            if (!empty($message['bcc'])) {
-                $bccRecipients = $this->parseRecipients($message['bcc']);
-                foreach ($bccRecipients as $recipient) {
-                    $this->mailer->addBCC($recipient['email'], $recipient['name']);
+                $this->mailer->setFrom($fromEmail, $fromName);
+
+                // Set single 'to' recipient
+                $this->mailer->addAddress($toRecipient['email'], $toRecipient['name']);
+
+                // Set CC recipients if present (same for all emails)
+                if (!empty($message['cc'])) {
+                    $ccRecipients = $this->parseRecipients($message['cc']);
+                    foreach ($ccRecipients as $recipient) {
+                        $this->mailer->addCC($recipient['email'], $recipient['name']);
+                    }
                 }
-            }
 
-            // Set reply-to if present
-            if (!empty($message['h:Reply-To'])) {
-                $replyTo = $this->extractEmail($message['h:Reply-To']);
-                $this->mailer->addReplyTo($replyTo);
-            }
-
-            // Set subject
-            $this->mailer->Subject = $message['subject'] ?? '';
-
-            // Set body content
-            if (!empty($message['html'])) {
-                $this->mailer->isHTML(true);
-                $this->mailer->Body = $message['html'];
-                if (!empty($message['text'])) {
-                    $this->mailer->AltBody = $message['text'];
+                // Set BCC recipients if present (same for all emails)
+                if (!empty($message['bcc'])) {
+                    $bccRecipients = $this->parseRecipients($message['bcc']);
+                    foreach ($bccRecipients as $recipient) {
+                        $this->mailer->addBCC($recipient['email'], $recipient['name']);
+                    }
                 }
-            } else {
-                $this->mailer->isHTML(false);
-                $this->mailer->Body = $message['text'] ?? '';
-            }
 
-            // Add custom headers
-            if (!empty($message['headers']) && is_array($message['headers'])) {
-                foreach ($message['headers'] as $header) {
-                    if (is_array($header) && count($header) >= 2) {
-                        // Headers are in format [['name', 'value'], ...]
-                        $name = $header[0];
-                        $value = $header[1];
+                // Set reply-to if present
+                if (!empty($message['h:Reply-To'])) {
+                    $replyTo = $this->extractEmail($message['h:Reply-To']);
+                    $this->mailer->addReplyTo($replyTo);
+                }
 
-                        // Skip standard headers that PHPMailer handles automatically
-                        $skipHeaders = ['mime-version', 'subject', 'from', 'to', 'content-transfer-encoding'];
-                        if (!in_array(strtolower($name), $skipHeaders)) {
-                            $this->mailer->addCustomHeader($name, $value);
-                        }
-                    } elseif (is_string($header)) {
-                        // Handle string headers in format "Name: Value"
-                        $parts = explode(':', $header, 2);
-                        if (count($parts) === 2) {
-                            $name = trim($parts[0]);
-                            $value = trim($parts[1]);
+                // Set subject
+                $this->mailer->Subject = $message['subject'] ?? '';
+
+                // Set body content
+                if (!empty($message['html'])) {
+                    $this->mailer->isHTML(true);
+                    $this->mailer->Body = $message['html'];
+                    if (!empty($message['text'])) {
+                        $this->mailer->AltBody = $message['text'];
+                    }
+                } else {
+                    $this->mailer->isHTML(false);
+                    $this->mailer->Body = $message['text'] ?? '';
+                }
+
+                // Add custom headers
+                if (!empty($message['headers']) && is_array($message['headers'])) {
+                    foreach ($message['headers'] as $header) {
+                        if (is_array($header) && count($header) >= 2) {
+                            // Headers are in format [['name', 'value'], ...]
+                            $name = $header[0];
+                            $value = $header[1];
+
+                            // Skip standard headers that PHPMailer handles automatically
                             $skipHeaders = ['mime-version', 'subject', 'from', 'to', 'content-transfer-encoding'];
                             if (!in_array(strtolower($name), $skipHeaders)) {
                                 $this->mailer->addCustomHeader($name, $value);
                             }
+                        } elseif (is_string($header)) {
+                            // Handle string headers in format "Name: Value"
+                            $parts = explode(':', $header, 2);
+                            if (count($parts) === 2) {
+                                $name = trim($parts[0]);
+                                $value = trim($parts[1]);
+                                $skipHeaders = ['mime-version', 'subject', 'from', 'to', 'content-transfer-encoding'];
+                                if (!in_array(strtolower($name), $skipHeaders)) {
+                                    $this->mailer->addCustomHeader($name, $value);
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            // Add attachments
-            if (!empty($message['attachments']) && is_array($message['attachments'])) {
-                foreach ($message['attachments'] as $attachment) {
-                    if (isset($attachment['path']) && file_exists($attachment['path'])) {
-                        $this->mailer->addAttachment(
-                            $attachment['path'],
-                            $attachment['name'] ?? basename($attachment['path']),
-                            'base64',
-                            $attachment['type'] ?? 'application/octet-stream'
-                        );
+                // Add attachments
+                if (!empty($message['attachments']) && is_array($message['attachments'])) {
+                    foreach ($message['attachments'] as $attachment) {
+                        if (isset($attachment['path']) && file_exists($attachment['path'])) {
+                            $this->mailer->addAttachment(
+                                $attachment['path'],
+                                $attachment['name'] ?? basename($attachment['path']),
+                                'base64',
+                                $attachment['type'] ?? 'application/octet-stream'
+                            );
+                        }
                     }
                 }
+
+                // Send the email
+                $result = $this->mailer->send();
+
+                $this->logger->info("Email sent successfully via SMTP", [
+                    'message_id' => $message['message_id'] ?? 'unknown',
+                    'to' => $toRecipient['email'],
+                    'recipient_index' => $index + 1,
+                    'total_recipients' => count($toRecipients),
+                    'subject' => $message['subject'] ?? 'no subject',
+                    'smtp_host' => $this->config['smtp']['host']
+                ]);
+
+                $results[] = [
+                    'success' => true,
+                    'recipient' => $toRecipient['email'],
+                    'message' => 'Email sent successfully via SMTP'
+                ];
+
+            } catch (Exception $e) {
+                $this->logger->error("Failed to send email via SMTP", [
+                    'message_id' => $message['message_id'] ?? 'unknown',
+                    'to' => $toRecipient['email'],
+                    'recipient_index' => $index + 1,
+                    'total_recipients' => count($toRecipients),
+                    'error' => $e->getMessage(),
+                    'smtp_host' => $this->config['smtp']['host']
+                ]);
+
+                $overallSuccess = false;
+                $errors[] = "Failed to send to {$toRecipient['email']}: " . $e->getMessage();
+
+                $results[] = [
+                    'success' => false,
+                    'recipient' => $toRecipient['email'],
+                    'error' => $e->getMessage(),
+                    'smtp_error' => $this->mailer->ErrorInfo
+                ];
             }
-
-            // Send the email
-            $result = $this->mailer->send();
-
-            $this->logger->info("Email sent successfully via SMTP", [
-                'message_id' => $message['message_id'] ?? 'unknown',
-                'to' => $message['to'],
-                'subject' => $message['subject'] ?? 'no subject',
-                'smtp_host' => $this->config['smtp']['host']
-            ]);
-
-            return [
-                'success' => true,
-                'message' => 'Email sent successfully via SMTP',
-                'smtp_info' => $this->mailer->getSentMIMEMessage() ? 'Message sent' : 'No MIME info available'
-            ];
-
-        } catch (Exception $e) {
-            $this->logger->error("Failed to send email via SMTP", [
-                'message_id' => $message['message_id'] ?? 'unknown',
-                'error' => $e->getMessage(),
-                'smtp_host' => $this->config['smtp']['host']
-            ]);
-
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-                'smtp_error' => $this->mailer->ErrorInfo
-            ];
         }
+
+        // Return overall result
+        return [
+            'success' => $overallSuccess,
+            'message' => $overallSuccess ?
+                'All emails sent successfully via SMTP' :
+                'Some emails failed to send',
+            'total_recipients' => count($toRecipients),
+            'successful_sends' => count(array_filter($results, function($r) { return $r['success']; })),
+            'failed_sends' => count(array_filter($results, function($r) { return !$r['success']; })),
+            'results' => $results,
+            'errors' => $errors
+        ];
     }
 
     /**
@@ -214,48 +252,86 @@ class SmtpHandler
      */
     public function sendMimeMessage($message)
     {
-        try {
-            // Reset mailer for new message
-            $this->mailer->clearAllRecipients();
-            $this->mailer->clearAttachments();
-            $this->mailer->clearCustomHeaders();
+        // Parse recipients for 'to' field
+        $toRecipients = $this->parseRecipients($message['to']);
 
-            // Set recipients
-            $recipients = $this->parseRecipients($message['to']);
-            foreach ($recipients as $recipient) {
-                $this->mailer->addAddress($recipient['email'], $recipient['name']);
-            }
-
-            // Set the raw MIME message
-            $this->mailer->MsgHTML($message['mime_content']);
-
-            // Send the email
-            $result = $this->mailer->send();
-
-            $this->logger->info("MIME email sent successfully via SMTP", [
-                'message_id' => $message['message_id'] ?? 'unknown',
-                'to' => $message['to'],
-                'smtp_host' => $this->config['smtp']['host']
-            ]);
-
-            return [
-                'success' => true,
-                'message' => 'MIME email sent successfully via SMTP'
-            ];
-
-        } catch (Exception $e) {
-            $this->logger->error("Failed to send MIME email via SMTP", [
-                'message_id' => $message['message_id'] ?? 'unknown',
-                'error' => $e->getMessage(),
-                'smtp_host' => $this->config['smtp']['host']
-            ]);
-
+        // If no recipients, return error
+        if (empty($toRecipients)) {
             return [
                 'success' => false,
-                'error' => $e->getMessage(),
-                'smtp_error' => $this->mailer->ErrorInfo
+                'error' => 'No valid recipients found in "to" field'
             ];
         }
+
+        $results = [];
+        $overallSuccess = true;
+        $errors = [];
+
+        // Send separate email to each 'to' recipient
+        foreach ($toRecipients as $index => $toRecipient) {
+            try {
+                // Reset mailer for new message
+                $this->mailer->clearAllRecipients();
+                $this->mailer->clearAttachments();
+                $this->mailer->clearCustomHeaders();
+
+                // Set single 'to' recipient
+                $this->mailer->addAddress($toRecipient['email'], $toRecipient['name']);
+
+                // Set the raw MIME message
+                $this->mailer->MsgHTML($message['mime_content']);
+
+                // Send the email
+                $result = $this->mailer->send();
+
+                $this->logger->info("MIME email sent successfully via SMTP", [
+                    'message_id' => $message['message_id'] ?? 'unknown',
+                    'to' => $toRecipient['email'],
+                    'recipient_index' => $index + 1,
+                    'total_recipients' => count($toRecipients),
+                    'smtp_host' => $this->config['smtp']['host']
+                ]);
+
+                $results[] = [
+                    'success' => true,
+                    'recipient' => $toRecipient['email'],
+                    'message' => 'MIME email sent successfully via SMTP'
+                ];
+
+            } catch (Exception $e) {
+                $this->logger->error("Failed to send MIME email via SMTP", [
+                    'message_id' => $message['message_id'] ?? 'unknown',
+                    'to' => $toRecipient['email'],
+                    'recipient_index' => $index + 1,
+                    'total_recipients' => count($toRecipients),
+                    'error' => $e->getMessage(),
+                    'smtp_host' => $this->config['smtp']['host']
+                ]);
+
+                $overallSuccess = false;
+                $errors[] = "Failed to send to {$toRecipient['email']}: " . $e->getMessage();
+
+                $results[] = [
+                    'success' => false,
+                    'recipient' => $toRecipient['email'],
+                    'error' => $e->getMessage(),
+                    'smtp_error' => $this->mailer->ErrorInfo
+                ];
+            }
+        }
+
+        // Return overall result
+        return [
+            'success' => $overallSuccess,
+            'message' => $overallSuccess ?
+                'All MIME emails sent successfully via SMTP' :
+                'Some MIME emails failed to send',
+            'total_recipients' => count($toRecipients),
+            'successful_sends' => count(array_filter($results, function($r) { return $r['success']; })),
+            'failed_sends' => count(array_filter($results, function($r) { return !$r['success']; })),
+            'results' => $results,
+            'errors' => $errors
+        ];
     }
 
     /**
