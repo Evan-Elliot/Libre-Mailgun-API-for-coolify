@@ -290,8 +290,8 @@ class MessageHandler
 
     private function processMessage($domain, $postData, $files, $messageId)
     {
-        // Handle multiple 'to' parameters (Mailgun native format)
-        $toRecipients = $this->normalizeRecipients($postData['to']);
+        // Extract recipients from recipient-variables if provided, otherwise use 'to' field
+        $toRecipients = $this->extractRecipientsFromVariables($postData);
 
         // Generate recipient-variables if not provided and we have multiple recipients
         $recipientVariables = $this->generateRecipientVariables($postData);
@@ -359,6 +359,26 @@ class MessageHandler
         }
 
         return implode(', ', $emails);
+    }
+
+    /**
+     * Extract recipients from recipient-variables if provided, otherwise use 'to' field
+     * Priority: recipient-variables keys > 'to' field
+     */
+    private function extractRecipientsFromVariables($postData)
+    {
+        // If recipient-variables is provided, use its keys as recipients
+        if (!empty($postData['recipient-variables'])) {
+            $recipientVariables = json_decode($postData['recipient-variables'], true);
+            if (is_array($recipientVariables) && !empty($recipientVariables)) {
+                // Use the keys (email addresses) from recipient-variables
+                $recipients = array_keys($recipientVariables);
+                return implode(',', array_map('trim', $recipients));
+            }
+        }
+
+        // Fallback to original behavior: use 'to' field
+        return $this->normalizeRecipients($postData['to']);
     }
 
     /**
