@@ -61,4 +61,4 @@ yarn-error.log*
 *.backup
 
 # Custom
-config/config.php
+# config/config.php configured for coolify env variables
